@@ -6,6 +6,7 @@ import requests
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
 import smtplib
+import pickle
 """
 Objectives:
     Input search values through console to run script
@@ -22,28 +23,42 @@ Objectives:
 """
 
 def get_soup(url):
-    r = requests.get(url)
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        print 
+        print "We caught a connection error/request exception.\nNobody panic."
+        time.sleep(15)
+        r = requests.get(url)
     data = r.text
-    return BeautifulSoup(data)
+    return BeautifulSoup(data)   
 
 def get_page_links(url, soup, words):
-    page_links = []
-    # Modified for craigslist
-    for link in soup.find_all('a'):
-#    data_attrs = {'data-longitude': True, 'data-latitude': True}
-#    for link in soup.find_all('p', class_='row', attrs=data_attrs):
-        #print(link.text)
-        for word in words:
-            if  word in link.text.lower():
-                link_dic = grab_link(url, link) 
-                if link_dic:
-                    page_links.append(link_dic) 
-                    break
-                else:
-                    pass
-            else:
-                pass
+    print "getting page: %s" % url
+    lower_case_links = [(link, link.text.lower()) for link in soup.find_all('a')]
+    print "got the links"
+    search_matches = [match[0] for match in lower_case_links for word in words if word in match[1]]
+    print "got the matches"
+    page_links_with_duplicates = [grab_link(url, search_match) for search_match in search_matches if grab_link(url, search_match)]
+    print "got page links"
+    page_links = [dict(tupleized) for tupleized in set(tuple(link.items()) for link in page_links_with_duplicates)]
+    print "removed duplicates"
     return page_links
+
+#def get_page_links(url, soup, words):
+#    page_links = []
+#    for link in soup.find_all('a'):
+#        for word in words:
+#            if  word in link.text.lower():
+#                link_dic = grab_link(url, link) 
+#                if link_dic:
+#                    page_links.append(link_dic) 
+#                    break
+#                else:
+#                    pass
+#            else:
+#                pass
+#    return page_links
 
 def get_craigslist_links(url, soup, words):
     # Modified for craigslist
@@ -58,28 +73,6 @@ def get_craigslist_links(url, soup, words):
         } for sub_soup in sub_soups for word in words if word in sub_soup[0
             ].find("h2").text + " " + sub_soup[0].find(id="postingbody").text]
     return page_links
-
-"""
-        sub_url =  base_sub_url % link.get('data-pid')
-        print sub_url
-        sub_soup = get_soup(sub_url)
-        print "TITLE: %s" % sub_soup.find("h2").text
-        print "BODY: %s" % sub_soup.find(id="postingbody").text
-#    data_attrs = {'data-longitude': True, 'data-latitude': True}
-#    for link in soup.find_all('p', class_='row', attrs=data_attrs):
-        #print(link.text)
-        for word in words:
-            if  word in link.text.lower():
-                link_dic = grab_link(url, link)
-                if link_dic:
-                    page_links.append(link_dic) 
-                    break
-                else:
-                    pass
-            else:
-                pass
-    return page_links
-"""
 
 def grab_link(url, link):
     if "reddit" in url:
@@ -169,7 +162,7 @@ config_dic = {"fromaddr": fromaddr, "toaddr": toaddr, "pas": pas, "sites_to_moni
 json.dump(config_dic, open("config_dic.json", "w"))
 
 try:
-    has_seen_list = json.load( open( "has_seen_list.json", "rb" ))
+    has_seen_list = pickle.load( open( "has_seen_list.p", "rb" ))
 except (IOError, EOFError):
     has_seen_list = []
 
@@ -191,8 +184,8 @@ while True:
             this_pass_list.append(dic['link'])
     if len(this_pass_list):
         has_seen_list += this_pass_list
-#        sendmail(fromaddr, toaddr, msg, pas)
-        json.dump( has_seen_list, open("has_seen_list.json", "w"))
+        sendmail(fromaddr, toaddr, msg, pas)
+        pickle.dump( has_seen_list, open("has_seen_list.pickle", "w"))
     else:
         pass
     time.sleep(1)
